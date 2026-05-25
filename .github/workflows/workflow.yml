@@ -10,18 +10,12 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-        with:
-          fetch-depth: 0 # MANDATORY: Needed for git describe to see tags
 
-      - name: Calculate Version and Update PKGBUILD
+      - name: Fetch Latest Upstream Version Tag
         run: |
-          # Calculate the version using git history
-          VERSION=$(git describe --long --tags --always | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g')
-          echo "Calculated version: $VERSION"
-          
-          # Replace the pkgver() function block with a static pkgver variable
-          # This range-based sed command finds from 'pkgver()' to the closing '}' and replaces it
-          sed -i '/pkgver()/,/}/c\pkgver='"$VERSION" PKGBUILD
+          LATEST_VER=$(git ls-remote --tags https://github.com/FN-FAL113/server-picker-x.git | awk -F/ '{print $3}' | grep -v '\^{}' | sed 's/^v//' | sort -V | tail -n1)
+          echo "Latest found version is: $LATEST_VER"
+          sed -i "s/^pkgver=.*/pkgver=$LATEST_VER/" PKGBUILD
 
       - name: Publish to AUR
         uses: KSXGitHub/github-actions-deploy-aur@v3
