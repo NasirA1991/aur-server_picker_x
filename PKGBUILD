@@ -1,13 +1,12 @@
 # Maintainer: ***REMOVED*** <***REMOVED***>
 _pkgname=server-picker-x
 pkgname=server-picker-x-git
-pkgver() {
-  cd "${_pkgname}"
-  # This generates a version like: 1.0.6.r5.gabc1234
-  git describe --long --tags | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
-}
 pkgrel=1
 pkgdesc="Lightweight CS2, Deadlock and Marathon GUI server picker for blocking/unblocking server locations"
+pkgver() {
+  cd "${srcdir}/${_pkgname}"
+  git describe --long --tags | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
+}
 arch=('x86_64')
 url="https://github.com/FN-FAL113/server-picker-x"
 license=('GPL-3.0')
