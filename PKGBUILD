@@ -3,10 +3,7 @@ _pkgname=server-picker-x
 pkgname=server-picker-x-git
 pkgrel=1
 pkgdesc="Lightweight CS2, Deadlock and Marathon GUI server picker for blocking/unblocking server locations"
-pkgver() {
-  cd "${srcdir}/${_pkgname}"
-  git describe --long --tags | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g'
-}
+pkgver=0.0.0
 arch=('x86_64')
 url="https://github.com/FN-FAL113/server-picker-x"
 license=('GPL-3.0')
