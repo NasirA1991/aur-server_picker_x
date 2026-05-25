@@ -12,7 +12,7 @@ makedepends=('git' 'dotnet-sdk')
 provides=('server-picker-x')
 conflicts=('server-picker-x')
 # Add "icon.png" here, assuming it's in the same folder as your PKGBUILD
-source=("git+${url}.git" "icon.png")
+source=("git+${url}.git" "icon.png::https://raw.githubusercontent.com/NasirA1991/aur-server_picker_x/main/icon.png")
 sha256sums=('SKIP' 'SKIP')
 
 # CRITICAL: Prevents Arch from mangling self-contained .NET binary structures
