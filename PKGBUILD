@@ -19,13 +19,14 @@ options=('!strip' '!debug')
 
 build() {
   cd "${_pkgname}"
-  
-  # Compile the C# project into a single self-contained executable for Linux
+
+  # Tell .NET to include the required native SkiaSharp libraries for Linux
   dotnet publish ServerPickerX/ServerPickerX.csproj \
     -c Release \
     -r linux-x64 \
     --self-contained true \
     -p:PublishSingleFile=true \
+    -p:IncludeNativeLibrariesForSelfExtract=true \
     -o ../build
 }
 
