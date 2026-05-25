@@ -12,7 +12,7 @@ makedepends=('git' 'dotnet-sdk')
 provides=('server-picker-x')
 conflicts=('server-picker-x')
 # Add "icon.png" here, assuming it's in the same folder as your PKGBUILD
-source=("git+${url}.git" "icon.png")
+source=("git+${url}.git")
 sha256sums=('SKIP' 'SKIP')
 
 # CRITICAL: Prevents Arch from mangling self-contained .NET binary structures
@@ -43,7 +43,7 @@ package() {
   chmod -R 777 "${pkgdir}/opt/${pkgname}"
 
   # 4. Install the icon into the hicolor theme
-  install -Dm644 "${srcdir}/icon.png" "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${pkgname}.png"
+  install -Dm644 "${_pkgname}/icon.png" "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${pkgname}.png"
 
   # 5. Create desktop entry
   install -d "${pkgdir}/usr/share/applications"
