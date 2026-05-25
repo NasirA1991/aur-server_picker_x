@@ -12,7 +12,7 @@ makedepends=('git' 'dotnet-sdk')
 provides=('server-picker-x')
 conflicts=('server-picker-x')
 # Add "icon.png" here, assuming it's in the same folder as your PKGBUILD
-source=("git+${url}.git")
+source=("git+${url}.git" "icon.png")
 sha256sums=('SKIP' 'SKIP')
 
 # CRITICAL: Prevents Arch from mangling self-contained .NET binary structures
@@ -38,6 +38,8 @@ package() {
   # 2. Create the symbolic link in /usr/bin/
   install -d "${pkgdir}/usr/bin"
   ln -s "/opt/${pkgname}/ServerPickerX" "${pkgdir}/usr/bin/${pkgname}"
+
+  ln -s "/opt/${pkgname}/ServerPickerX" "${pkgdir}/usr/bin/server-picker-x"
 
   # 3. Permissions for logging
   chmod -R 777 "${pkgdir}/opt/${pkgname}"
