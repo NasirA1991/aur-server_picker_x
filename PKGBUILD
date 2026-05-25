@@ -43,7 +43,7 @@ package() {
   chmod -R 777 "${pkgdir}/opt/${pkgname}"
 
   # 4. Install the icon into the hicolor theme
-  install -Dm644 "${_pkgname}/icon.png" "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${pkgname}.png"
+  install -Dm644 "${srcdir}/icon.png" "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${pkgname}.png"
 
   # 5. Create desktop entry
   install -d "${pkgdir}/usr/share/applications"
