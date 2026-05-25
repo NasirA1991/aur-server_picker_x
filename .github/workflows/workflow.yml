@@ -13,6 +13,16 @@ jobs:
         with:
           fetch-depth: 0 # MANDATORY: Needed for git describe to see tags
 
+      - name: Calculate Version and Update PKGBUILD
+        run: |
+          # Calculate the version using git history
+          VERSION=$(git describe --long --tags --always | sed 's/^v//;s/\([^-]*-g\)/r\1/;s/-/./g')
+          echo "Calculated version: $VERSION"
+          
+          # Replace the pkgver() function block with a static pkgver variable
+          # This range-based sed command finds from 'pkgver()' to the closing '}' and replaces it
+          sed -i '/pkgver()/,/}/c\pkgver='"$VERSION" PKGBUILD
+
       - name: Publish to AUR
         uses: KSXGitHub/github-actions-deploy-aur@v3
         with:
