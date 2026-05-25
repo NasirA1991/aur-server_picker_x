@@ -23,6 +23,6 @@ jobs:
           pkgname: server-picker-x-git
           PKGBUILD: ./PKGBUILD
           SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
-          commit_username: "***REMOVED***"
-          commit_email: "***REMOVED***"
+          commit_username: ${{ secrets.AUR_COMMIT_USERNAME }}
+          commit_email: ${{ secrets.AUR_COMMIT_EMAIL }}
           updpkgsums: true
