@@ -18,6 +18,15 @@ sha256sums=('SKIP' 'SKIP')
 # CRITICAL: Prevents Arch from mangling self-contained .NET binary structures
 options=('!strip' '!debug')
 
+prepare() {
+  # This ensures we are in the correct directory where the files were downloaded
+  # And verifies the icon is present before the build attempts to package it
+  if [ ! -f "${srcdir}/icon.png" ]; then
+    echo "Error: icon.png not found in ${srcdir}"
+    exit 1
+  fi
+}
+
 build() {
   cd "${_pkgname}"
 
@@ -45,7 +54,7 @@ package() {
   chmod -R 777 "${pkgdir}/opt/${pkgname}"
 
   # 4. Install the icon into the hicolor theme
-  install -Dm644 "${srcdir}/icon.png" "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${pkgname}.png"
+  install -Dm644 "icon.png" "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${pkgname}.png"
 
   # 5. Create desktop entry
   install -d "${pkgdir}/usr/share/applications"
