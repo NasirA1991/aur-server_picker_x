@@ -1,8 +1,8 @@
 # Maintainer: Evilleader evilleader91@gmail.com
 _pkgname=server-picker-x
 pkgname=server-picker-x-git
-pkgver=1.0.6
-pkgrel=2
+pkgver=1.1.0
+pkgrel=1
 pkgdesc="Lightweight CS2, Deadlock and Marathon GUI server picker for blocking/unblocking server locations"
 arch=('x86_64')
 url="https://github.com/FN-FAL113/server-picker-x"
