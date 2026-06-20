@@ -13,11 +13,12 @@ provides=('server-picker-x')
 conflicts=('server-picker-x')
 # Add "icon.png" here, assuming it's in the same folder as your PKGBUILD
 source=("git+${url}.git" "icon.png::https://raw.githubusercontent.com/NasirA1991/aur-server_picker_x/main/icon.png")
-sha256sums=('SKIP' 'SKIP')
-
+# First entry MUST stay 'SKIP' -- it's a live git source, there's nothing
+# stable to hash. Second entry is a real downloadable file, so it gets a
+# real checksum (computed automatically by `updpkgsums: true` in deploy.yml).
+sha256sums=('SKIP' 'PLACEHOLDER')
 # CRITICAL: Prevents Arch from mangling self-contained .NET binary structures
 options=('!strip' '!debug')
-
 prepare() {
   # This ensures we are in the correct directory where the files were downloaded
   # And verifies the icon is present before the build attempts to package it
@@ -26,10 +27,8 @@ prepare() {
     exit 1
   fi
 }
-
 build() {
   cd "${_pkgname}"
-
   dotnet publish ServerPickerX/ServerPickerX.csproj \
     -c Release \
     -r linux-x64 \
@@ -38,7 +37,6 @@ build() {
     -p:IncludeNativeLibrariesForSelfExtract=true \
     -o ../build
 }
-
 package() {
   # 1. Install files to /opt/
   install -d "${pkgdir}/opt/${pkgname}"
@@ -47,15 +45,11 @@ package() {
   # 2. Create the symbolic link in /usr/bin/
   install -d "${pkgdir}/usr/bin"
   ln -s "/opt/${pkgname}/ServerPickerX" "${pkgdir}/usr/bin/${pkgname}"
-
   ln -s "/opt/${pkgname}/ServerPickerX" "${pkgdir}/usr/bin/server-picker-x"
-
   # 3. Permissions for logging
   chmod -R 777 "${pkgdir}/opt/${pkgname}"
-
   # 4. Install the icon into the hicolor theme
   install -Dm644 "icon.png" "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${pkgname}.png"
-
   # 5. Create desktop entry
   install -d "${pkgdir}/usr/share/applications"
   cat <<EOF > "${pkgdir}/usr/share/applications/${pkgname}.desktop"
@@ -68,7 +62,6 @@ Terminal=false
 Type=Application
 Categories=Utility;Network;
 EOF
-
   # 6. Copy the license
   install -Dm644 "${_pkgname}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
 }
