@@ -1,22 +1,388 @@
+
+Claude finished the response
+
+Help me modify this so it actually works: # Maintainer: Evilleader evilleader91@gmail.com pkgname=optiscaler-client-bin pkgver=1.0.5 pkgrel=1 pkgdesc="Modern desktop client for installing, updating and configuring OptiScaler across game libraries" arch=('x86_64') url="https://github.com/Agustinm28
+
+pasted
+
+12:25
+
+Thought for 23s
+Thought for 23s
+This is a solid debugging task — let me check the actual behavior of the KSXGitHub/github-actions-deploy-aur action's updpkgsums option, since that's the cleanest way to solve your checksum problem.
+
+
+Diagnosed workflow bugs and architected comprehensive fixes
+Diagnosed workflow bugs and architected comprehensive fixes
+
+KSXGitHub github-actions-deploy-aur updpkgsums option
+10 results
+
+
+GitHub - KSXGitHub/github-actions-deploy-aur: GitHub Actions to publish AUR package · GitHub
+github.com
+
+github-actions-deploy-aur/action.yml at master · KSXGitHub/github-actions-deploy-aur
+github.com
+
+github-actions-deploy-aur/build.sh at master · KSXGitHub/github-actions-deploy-aur
+github.com
+
+RyuSAK/.github/workflows/publish-to-aur.yaml at master · Ecks1337/RyuSAK
+github.com
+
+Releases · KSXGitHub/github-actions-deploy-aur
+github.com
+
+1.0.108 · CapitaineJSparrow/emusak-ui@ed00325
+github.com
+
+Maintaining AUR packages with Renovate - Renovate Docs
+docs.renovatebot.com
+
+Publish AUR package · Actions · GitHub Marketplace · GitHub
+github.com
+
+通过 Github 自动发布 AUR 包
+manateelazycat.github.io
+
+Freedom From Repetitive Tasks: Automatically Publish AUR Packages via GitHub Actions - DEV Community
+dev.to
+Confirmed: the action's build.sh runs updpkgsums if updpkgsums == "true" BEFORE generating .SRCINFO itself in the action's own build process, it copies the PKGBUILD, optionally runs updpkgsums to update checksums, then generates .SRCINFO with makepkg --printsrcinfo. This means the action already handles checksum updates and regenerates .SRCINFO internally — so the manual "Generate .SRCINFO" docker step in the user's workflow is redundant and could actually cause an SRCINFO mismatch if checksums change but the manually-generated .SRCINFO (with PLACEHOLDER) gets passed as an asset.
+
+So the cleanest fix: enable updpkgsums: true in the deploy step, and remove the manual SRCINFO generation step (or keep it only for local testing, not pass it as an asset, since the action generates its own .SRCINFO inside its container). Actually wait — the assets parameter lists .SRCINFO as one of the files to copy in. If we set updpkgsums: true, the action will regenerate .SRCINFO itself anyway (overwriting whatever's copied) per the build.sh script: it always runs makepkg --printsrcinfo > .SRCINFO at the end regardless of the test/updpkgsums settings. So passing .SRCINFO in assets becomes irrelevant since it gets overwritten. Good — so housekeeping: PKGBUILD must use 'SKIP' or actual computed value for placeholder; with updpkgsums true, it will replace whatever's there.
+
+Now let's also address the "Always allow manual override" step - it's dead code, not used by anything. I'll remove it for clarity, and fix the deploy condition to also work properly.
+
+Now there's also a subtlety: the docker-based "Generate .SRCINFO" step in the current workflow runs unconditionally (no if), even when there's no update. This is fine since it's harmless (doesn't push anywhere), but it's wasted compute if no update. Since deploy will be skipped anyway, it's not strictly necessary to keep this step at all, especially since the deploy action will generate its own correctly. …
+
+Show more
+Done
+I found the actual root cause of your problem, and it's a bit nastier than just "missing an if-check." Let me walk through it, then hand you the fixed files.
+
+The real bug: your "Detect version mismatch" step compares the pkgver baked into the PKGBUILD that's checked into your GitHub repo against the latest GitHub release. But nowhere in the workflow does it ever commit the version bump back to GitHub — it only pushes to the AUR git repo. So after the first real version bump, your GitHub repo's PKGBUILD is permanently stuck on the old version, which means CURRENT != LATEST forever, which means update=true on every single run from then on. That's functionally the same as your old "always push" hack, just one layer removed — it explains why your fix attempt probably didn't actually stop the spam.
+
+The fix: add a step that commits the bumped pkgver/pkgrel back to your own GitHub repo whenever an update is detected, so future runs compare against the real last-deployed state.
+
+The SHA situation: KSXGitHub/github-actions-deploy-aur has a built-in updpkgsums: true option. Internally, after cloning the AUR repo and copying in your PKGBUILD, it runs updpkgsums to compute real checksums (skipping any entry literally marked SKIP), then regenerates .SRCINFO with makepkg --printsrcinfo — entirely inside the action's own container. That means your manual Docker step for generating .SRCINFO is redundant (and was part of why PLACEHOLDER never got replaced — nothing was ever computing a real hash). Turning on updpkgsums: true and deleting that whole step solves checksums and .SRCINFO in one move. 
+GitHub
+
+I also noticed optiscaler-client.desktop isn't in your assets: list even though the PKGBUILD references it as a local source — it only survives because it's presumably already sitting in your AUR git history from initial setup. I added it to assets so it's robust regardless.
+
+
+The user prompt is empty, so there is no primary language established. However, I'll provide a summary of the thinking block in English: Prepared output for presentation
+The user prompt is empty, so there is no primary language established. However, I'll provide a summary of the thinking block in English: Prepared output for presentation
+A few other things worth knowing:
+
+You don't need to keep .SRCINFO in your GitHub repo or hand-generate it at all anymore — updpkgsums: true makes the deploy action build it fresh inside its own container right before pushing to AUR, every single time. I dropped both the manual .SRCINFO step and the dead "Always allow manual override (IMPORTANT FIX)" step (it set an output nothing ever read — the deploy step already checks github.event_name == 'workflow_dispatch' directly).
+
+Worth double checking before you merge this: the AUR repo's existing .SRCINFO/PKGBUILD might still have the literal 'SKIP' entries baked in from before. Since updpkgsums won't touch anything still marked SKIP, the very first run after this change is what actually computes real hashes for the icons/desktop file for the first time — that's expected, not a bug.
+
+One tradeoff to be aware of: cancel-in-progress: false on the concurrency group means if a scheduled run is still mid-flight when you manually trigger one, the manual one queues instead of canceling it — safer for not corrupting a git push mid-commit, just means an occasional short wait.
+
+
+Deploy
+YML 
+
+PKGBUILD
+ 
+
+32s Run KSXGitHub/github-actions-deploy-aur@v4.1.3 /usr/bin/docker run --name dd4bc7aca36e45d5d941e8ae6b58141fb1d44a_6ca135 --label dd4bc7 --workdir /github/workspace --rm -e "INPUT_PKGNAME" -e "INPUT_PKGBUILD" -e "INPUT_ASSETS" -e "INPUT_UPDPKGSUMS" -e "INPUT_SSH_PRIVATE_KEY" -e "INPUT_COMMIT_USERN
+
+pasted
+
+12:32
+
+Diagnosed git commit bloat issue and architected cleanup solution
+Diagnosed git commit bloat issue and architected cleanup solution
+Found it — and the AUR rejection log actually told me exactly what went wrong. I pulled the action's actual build script to confirm:
+
+
+The user prompt is empty, so I cannot determine the primary language. However, based on the thinking block alone, here is my summary: Orchestrated configuration file modification for deployment
+The user prompt is empty, so I cannot determine the primary language. However, based on the thinking block alone, here is my summary: Orchestrated configuration file modification for deployment
+The action's build.sh has a branch that matters a lot here: when assets is non-empty, it stages files with git add --all instead of adding just PKGBUILD and .SRCINFO individually — because, as the comment explains, glob-expanded asset paths are absolute and outside the repo, so --all is the only way to catch them. The problem is updpkgsums runs makepkg's source-fetch step in that same directory, which downloads your 56MB zip and the icon PNGs straight into the AUR repo's working tree to compute hashes — and leaves them sitting there. With assets set, git add --all then sweeps those leftover downloads into the commit along with everything else, and AUR's push hook rejects any blob over roughly 488KiB. That's your exact error. 
+GitHub
+
+The fix is the post_process input — it runs right after .SRCINFO generation and before the commit/add step, so it's the right place to delete the downloaded source artifacts before they get staged.
+
+
+Edited 2 files, viewed a file
+Edited 2 files, viewed a file
+Looks right. Copying to the outputs folder.
+
+
+I cannot provide a summary because the user prompt is empty. Please provide the user's actual question or request
+I cannot provide a summary because the user prompt is empty. Please provide the user's actual question or request
+One more thing worth flagging: the push was rejected by AUR's hook, so nothing landed on the AUR side — no remote cleanup needed, you can just rerun with this fix in place. The PKGBUILD itself never needed changes for this bug; the giant blob was purely a side effect of how the action stages files when assets is set alongside updpkgsums.
+
+
+Deploy
+YML 
+Can you help me modify this also in similar manner? Right now it pushes to AUR every 6 hrs even if theres no update, i wanna keep running github actions every 6 hrs but only push to AUR IF there is an update also fix the SHA-verification thingie since ppl complained that i skipped it...
+
+# Maintainer: Evilleader evilleader91@gmail.com
+pkgname=feishin-bin
+pkgver=1.13.0
+pkgrel=1
+pkgdesc="Modern web-based music player (prebuilt binary)"
+arch=('x86_64')
+url="https://github.com/jeffvli/feishin"
+license=('GPL3')
+depends=('libnotify' 'nss' 'gtk3' 'alsa-lib')
+provides=('feishin')
+conflicts=('feishin')
+source=(
+  "feishin.tar.xz::https://github.com/jeffvli/feishin/releases/download/v${pkgver}/Feishin-linux-x64.tar.xz"
+)
+noextract=("feishin.tar.xz")
+sha256sums=('PLACEHOLDER')
+package() {
+  mkdir -p "$pkgdir/opt/feishin"
+  mkdir -p "$pkgdir/usr/bin"
+  mkdir -p "$pkgdir/usr/share/applications"
+  mkdir -p "$pkgdir/usr/share/icons/hicolor/512x512/apps"
+  bsdtar -xf feishin.tar.xz -C "$pkgdir/opt/feishin"
+  cat > "$pkgdir/usr/bin/feishin" << 'EOF'
+#!/bin/bash
+exec /opt/feishin/Feishin-linux-x64/feishin "$@"
+EOF
+  chmod +x "$pkgdir/usr/bin/feishin"
+  install -Dm644 /dev/stdin "$pkgdir/usr/share/applications/feishin.desktop" << 'EOF'
+[Desktop Entry]
+Name=Feishin
+GenericName=Music player
+Exec=/usr/bin/feishin
+Terminal=false
+Type=Application
+Icon=feishin
+StartupWMClass=feishin
+SingleMainWindow=true
+Categories=AudioVideo;Audio;Player;Music;
+Keywords=Navidrome;Jellyfin;Subsonic;OpenSubsonic
+Comment=A player for your self-hosted music server
+EOF
+  install -Dm644 \
+    "$pkgdir/opt/feishin/Feishin-linux-x64/resources/assets/icons/512x512.png" \
+    "$pkgdir/usr/share/icons/hicolor/512x512/apps/feishin.png"
+}
+
+deploy.yml:
+
 name: Deploy to AUR
 on:
   schedule:
     - cron: '0 */6 * * *'
   workflow_dispatch:
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+      - name: Get latest Feishin release
+        id: release
+        run: |
+          set -e
+          JSON=$(curl -s https://api.github.com/repos/jeffvli/feishin/releases/latest)
+          VERSION=$(echo "$JSON" | jq -r '.tag_name')
+          CLEAN_VERSION="${VERSION#v}"
+          echo "version=$CLEAN_VERSION" >> $GITHUB_OUTPUT
+      - name: Check if update is needed
+        id: check
+        run: |
+          set -e
+          CURRENT=$(grep -Po '^pkgver=\K.*' PKGBUILD)
+          LATEST="${{ steps.release.outputs.version }}"
+          echo "current=$CURRENT"
+          echo "latest=$LATEST"
+          if [ "$CURRENT" = "$LATEST" ]; then
+            echo "update=false" >> $GITHUB_OUTPUT
+            exit 0
+          fi
+          echo "update=true" >> $GITHUB_OUTPUT
+      - name: Update PKGBUILD + SHA256
+        if: steps.check.outputs.update == 'true'
+        run: |
+          set -e
+          VERSION="${{ steps.release.outputs.version }}"
+          # update version
+          sed -i "s/^pkgver=.*/pkgver=$VERSION/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+          # download source
+          URL="https://github.com/jeffvli/feishin/releases/download/v${VERSION}/Feishin-linux-x64.tar.xz"
+          curl -L -o feishin.tar.xz "$URL"
+          # calculate sha
+          SHA256=$(sha256sum feishin.tar.xz | awk '{print $1}')
+          # inject sha into PKGBUILD
+          sed -i "s|^sha256sums=.*|sha256sums=('$SHA256')|" PKGBUILD
+      - name: Clean workspace
+        run: |
+          rm -f feishin.tar.xz || true
+          git clean -fdx
+      - name: Deploy to AUR
+        if: steps.check.outputs.update == 'true'
+        uses: KSXGitHub/github-actions-deploy-aur@v3
+        with:
+          pkgname: feishin-bin
+          pkgbuild: ./PKGBUILD
+          assets: |
+            PKGBUILD
+          SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_username: ${{ secrets.AUR_COMMIT_USERNAME }}
+          commit_email: ${{ secrets.AUR_COMMIT_EMAIL }}
+          updpkgsums: false
+          allow_empty_commits: false
 
+Show more
+12:40
+
+Identified version-bump persistence bug and validated SHA computation approach
+Identified version-bump persistence bug and validated SHA computation approach
+Good news: this one's actually closer to correct than the OptiScaler one, and you don't have the blob-size bug at all here. Walking through why:
+
+The SHA mechanism is sound: you compute a real sha256sum of the downloaded tarball and sed it into PKGBUILD before deploy, and pass updpkgsums: false (correctly) since you're handling it yourself. No SKIP anywhere. That part isn't actually broken — once the rest of the pipeline runs correctly on a real update, AUR gets a genuine checksum.
+
+You also dodge the blob-size trap from the OptiScaler fix: your "Clean workspace" step deletes feishin.tar.xz from your own checkout before the deploy step runs, and assets: PKGBUILD never references the tarball, so it never has a chance to leak into the AUR repo's working tree the way it did with updpkgsums: true there.
+
+The actual cause of "pushes every 6 hours regardless" is the same root bug as the OptiScaler workflow: your sed bumps pkgver in the runner's local copy of PKGBUILD, but nothing ever commits that bump back to your GitHub repo. So the next scheduled run checks out the old, un-bumped PKGBUILD again, sees CURRENT != LATEST again, and deploys again — forever, every 6 hours, after the very first real version bump. That's the loop you're seeing.
+
+
+Removed redundant asset configuration for cleaner, safer deployment process
+Removed redundant asset configuration for cleaner, safer deployment process
+I also removed the assets: PKGBUILD line from the deploy step — it was redundant (the pkgbuild input already copies that exact file in), and its only real effect was forcing the action's internal commit logic onto its git add --all path instead of the narrower git add -fv PKGBUILD .SRCINFO path. It wasn't biting you here since nothing extra gets downloaded into that directory in your setup, but there's no upside to it either, and it's the same lever that caused the blob-size failure in your other package — better to not have it armed for no reason.
+
+The PKGBUILD itself needs no changes; your sha256sums=('PLACEHOLDER') placeholder is exactly right as a target for the sed replacement, same as the corrected OptiScaler one.
+
+
+Ran a command, read a file
+Ran a command, read a file
+One thing to double check before this goes live: make sure the GITHUB_TOKEN for this repo has write permission for Actions (Settings → Actions → General → Workflow permissions → "Read and write permissions"), since the new commit-back step needs it and the permissions: contents: write block in the workflow only grants what the repo-level setting allows.
+
+
+Feishin deploy
+YML 
+Problem is it didnt deploy to AUR cuz:
+
+0s
+Run set -e
+current=1.13.0
+latest=1.13.0
+
+how to force it to update at least once so the pkgbuild in AUR gets commited?
+
+12:44
+
+Engineered workflow override to force manual deployment despite version match
+Engineered workflow override to force manual deployment despite version match
+The user wants to force a one-time manual deploy to push current PKGBUILD to AUR even though there's no version mismatch (current=latest=1.13.0), likely because the AUR repo currently has stale/incorrect content (e.g., still has old SKIP-based or broken state) and they want to push the corrected workflow's output once to sync AUR.
+
+The workflow's "Deploy to AUR" step has condition: if: steps.check.outputs.update == 'true' — note, unlike the OptiScaler workflow, this Feishin workflow does NOT have the || github.event_name == 'workflow_dispatch' override condition. So manual dispatch alone won't force deployment. Need to add that.
+
+Also, since update=false, the "Update PKGBUILD + SHA256" step (which computes the real sha256) won't run either - guarded by if: steps.check.outputs.update == 'true'. So even if we just changed the deploy condition to allow manual override, the PKGBUILD's sha256sums would still have the old/incorrect value (whatever was committed previously, possibly still 'PLACEHOLDER' literal if this is the very first run ever, or a stale real hash from a previous successful run).
+
+So to force a one-time sync: user needs to manually trigger workflow_dispatch, and we need to:
+
+Make deploy step run on workflow_dispatch regardless of update flag (like the other workflow has || github.event_name == 'workflow_dispatch').
+But also need the SHA256 to be correct - if current PKGBUILD already has correct real sha256 (because a previous local manual run did this, or because this is the initial state), then it's fine to deploy current PKGBUILD as-is. If sha256sums is still literally 'PLACEHOLDER' (never been replaced because update was never true), then deploying now would push a PKGBUILD with an invalid checksum - bad.
+The user's question: "how to force it to update at least once so the pkgbuild in AUR gets committed?" — they want to seed initial AUR repo, or force a sync now since pkgver already matches but AUR doesn't have it yet (maybe AUR repo is …
+
+Show more
+Done
+The deploy condition only triggers on update == 'true', so a manual run with no version change won't deploy — and even if it did, the SHA-update step is gated the same way, so a forced run wouldn't necessarily produce a correct checksum either. Both need a manual-override path, similar to what you already had working in the OptiScaler workflow.
+
+
+Edited a file, ran a command, read a file
+Edited a file, ran a command, read a file
+With this in place, go to Actions → this workflow → "Run workflow" (that's what triggers workflow_dispatch). It'll recompute the real SHA256 even though pkgver is unchanged, deploy to AUR regardless of the version check, and only commit the bump back to GitHub if something actually changed — so it won't error out on an empty commit if PKGBUILD was already correct locally.
+
+One thing to sanity-check on your end: if AUR currently has nothing for this package yet (first-ever push) or has a PKGBUILD with sha256sums=('SKIP') baked in from before, this run will fully overwrite it with the corrected version — that's the intended effect here.
+
+
+Feishin deploy
+YML 
+Can you help me achieve similar with this too?
+
+# Maintainer: Evilleader evilleader91@gmail.com
+_pkgname=server-picker-x
+pkgname=server-picker-x-git
+pkgver=1.0.6
+pkgrel=1
+pkgdesc="Lightweight CS2, Deadlock and Marathon GUI server picker for blocking/unblocking server locations"
+arch=('x86_64')
+url="https://github.com/FN-FAL113/server-picker-x"
+license=('GPL-3.0')
+depends=('glibc' 'gcc-libs' 'fontconfig')
+makedepends=('git' 'dotnet-sdk')
+provides=('server-picker-x')
+conflicts=('server-picker-x')
+# Add "icon.png" here, assuming it's in the same folder as your PKGBUILD
+source=("git+${url}.git" "icon.png::https://raw.githubusercontent.com/NasirA1991/aur-server_picker_x/main/icon.png")
+sha256sums=('SKIP' 'SKIP')
+# CRITICAL: Prevents Arch from mangling self-contained .NET binary structures
+options=('!strip' '!debug')
+prepare() {
+  # This ensures we are in the correct directory where the files were downloaded
+  # And verifies the icon is present before the build attempts to package it
+  if [ ! -f "${srcdir}/icon.png" ]; then
+    echo "Error: icon.png not found in ${srcdir}"
+    exit 1
+  fi
+}
+build() {
+  cd "${_pkgname}"
+  dotnet publish ServerPickerX/ServerPickerX.csproj \
+    -c Release \
+    -r linux-x64 \
+    --self-contained true \
+    -p:PublishSingleFile=true \
+    -p:IncludeNativeLibrariesForSelfExtract=true \
+    -o ../build
+}
+package() {
+  # 1. Install files to /opt/
+  install -d "${pkgdir}/opt/${pkgname}"
+  cp -r build/* "${pkgdir}/opt/${pkgname}/"
+
+  # 2. Create the symbolic link in /usr/bin/
+  install -d "${pkgdir}/usr/bin"
+  ln -s "/opt/${pkgname}/ServerPickerX" "${pkgdir}/usr/bin/${pkgname}"
+  ln -s "/opt/${pkgname}/ServerPickerX" "${pkgdir}/usr/bin/server-picker-x"
+  # 3. Permissions for logging
+  chmod -R 777 "${pkgdir}/opt/${pkgname}"
+  # 4. Install the icon into the hicolor theme
+  install -Dm644 "icon.png" "${pkgdir}/usr/share/icons/hicolor/128x128/apps/${pkgname}.png"
+  # 5. Create desktop entry
+  install -d "${pkgdir}/usr/share/applications"
+  cat <<EOF > "${pkgdir}/usr/share/applications/${pkgname}.desktop"
+[Desktop Entry]
+Name=Server Picker X
+Comment=Block/Unblock server locations for CS2 and Deadlock
+Exec=${pkgname}
+Icon=${pkgname}
+Terminal=false
+Type=Application
+Categories=Utility;Network;
+EOF
+  # 6. Copy the license
+  install -Dm644 "${_pkgname}/LICENSE" "${pkgdir}/usr/share/licenses/${pkgname}/LICENSE"
+}
+
+name: Deploy to AUR
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
       - name: Fetch Latest Upstream Version Tag
         run: |
           LATEST_VER=$(git ls-remote --tags https://github.com/FN-FAL113/server-picker-x.git | awk -F/ '{print $3}' | grep -v '\^{}' | sed 's/^v//' | sort -V | tail -n1)
           echo "Latest found version is: $LATEST_VER"
           sed -i "s/^pkgver=.*/pkgver=$LATEST_VER/" PKGBUILD
-
       - name: Publish to AUR
         uses: KSXGitHub/github-actions-deploy-aur@v3
         with:
@@ -26,3 +392,127 @@ jobs:
           commit_username: ${{ secrets.AUR_COMMIT_USERNAME }}
           commit_email: ${{ secrets.AUR_COMMIT_EMAIL }}
           updpkgsums: true
+
+Show more
+12:51
+
+Diagnosed VCS package design flaws and formulated comprehensive fixes
+Diagnosed VCS package design flaws and formulated comprehensive fixes
+This one has the same "always pushes" problem as the others, but even more directly — there's no check step at all here, so it deploys on every single scheduled run regardless of whether the upstream tag changed. It also has the same "missing commit-back" gap that would bite you once you add a check. The SHA situation is slightly different though, since this is a -git package.
+
+A quick note on the SHA part: the git+${url}.git source absolutely should stay SKIP — you can't meaningfully checksum a moving git target, that's correct and standard practice, not something to fix. The actual gap is the second source: icon.png is a real downloadable file from a URL, and it's currently riding along with SKIP for no good reason. That one should get a real hash.
+
+
+Formulated concluding remarks addressing workflow automation and version management conventions
+Formulated concluding remarks addressing workflow automation and version management conventions
+No blob-size risk here like the OptiScaler one — the git source stays SKIP (so updpkgsums never clones it), and the icon is a tiny PNG, not a multi-MB binary, so there's nothing large for git add --all-style staging to sweep up even without an assets: line.
+
+One design note, not something broken, just worth knowing: for -git AUR packages the conventional approach is a pkgver() function in the PKGBUILD itself (something like git describe --long --tags reformatted), which lets makepkg and AUR helpers compute the version live at build time without any CI involvement at all — version bumping then happens automatically on the user's machine, not on a schedule. What you have instead — CI polling tags and sed-ing pkgver — works fine and is what I built on here, but it does mean the version shown on the AUR page only updates every 6 hours rather than instantly reflecting upstream. Not something to change unless you want to; just flagging the tradeoff.
+
+Same mechanism as before to force a first push or resync AUR: trigger this via Actions → "Run workflow". It'll recompute the icon's checksum and deploy even if the tag hasn't moved, and only commits back to GitHub if PKGBUILD actually changed.
+
+
+Server picker x git deploy
+YML 
+
+server-picker-x-git-PKGBUILD
+ 
+
+Want to be notified when Claude responds?
+Claude Fable 5 is currently unavailable.
+Learn more(opens in new tab)
+
+
+
+
+Claude is AI and can make mistakes. Please double-check responses.
+Server picker x git deploy · YML
+name: Deploy to AUR
+ 
+on:
+  schedule:
+    - cron: '0 */6 * * *'
+  workflow_dispatch:
+ 
+permissions:
+  contents: write   # needed to commit the version bump back to this repo
+ 
+concurrency:
+  group: deploy-to-aur
+  cancel-in-progress: false
+ 
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+ 
+      - name: Fetch latest upstream tag
+        id: latest
+        run: |
+          set -e
+          LATEST_VER=$(git ls-remote --tags https://github.com/FN-FAL113/server-picker-x.git \
+            | awk -F/ '{print $3}' | grep -v '\^{}' | sed 's/^v//' | sort -V | tail -n1)
+          if [ -z "$LATEST_VER" ]; then
+            echo "Could not determine latest tag, aborting." >&2
+            exit 1
+          fi
+          echo "Latest found version is: $LATEST_VER"
+          echo "latest=$LATEST_VER" >> "$GITHUB_OUTPUT"
+ 
+      - name: Check if update is needed
+        id: check
+        run: |
+          set -e
+          CURRENT=$(grep -Po '^pkgver=\K.*' PKGBUILD)
+          LATEST="${{ steps.latest.outputs.latest }}"
+          echo "current=$CURRENT"
+          echo "latest=$LATEST"
+          if [ "$CURRENT" = "$LATEST" ]; then
+            echo "update=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "update=true" >> "$GITHUB_OUTPUT"
+          fi
+ 
+      - name: Bump PKGBUILD version
+        if: steps.check.outputs.update == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -e
+          sed -i "s/^pkgver=.*/pkgver=${{ steps.latest.outputs.latest }}/" PKGBUILD
+          sed -i "s/^pkgrel=.*/pkgrel=1/" PKGBUILD
+ 
+      # Same fix as the other two packages: without committing the bump back
+      # to THIS repo, next run's check step keeps comparing against the old
+      # pkgver forever and "update" gets stuck on true permanently.
+      #
+      # Guarded with a diff check rather than just the if:, because a manual
+      # workflow_dispatch run with no real tag change still runs the bump
+      # step above, but may produce zero changes -- in which case there's
+      # nothing to commit and `git commit` would otherwise fail the job.
+      - name: Commit version bump back to repo
+        if: steps.check.outputs.update == 'true' || github.event_name == 'workflow_dispatch'
+        run: |
+          set -e
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add PKGBUILD
+          if git diff --staged --quiet; then
+            echo "No PKGBUILD changes to commit."
+          else
+            git commit -m "Bump pkgver to ${{ steps.latest.outputs.latest }}"
+            git push
+          fi
+ 
+      - name: Deploy to AUR
+        if: steps.check.outputs.update == 'true' || github.event_name == 'workflow_dispatch'
+        uses: KSXGitHub/github-actions-deploy-aur@v4.1.3
+        with:
+          pkgname: server-picker-x-git
+          pkgbuild: ./PKGBUILD
+          updpkgsums: true
+          ssh_private_key: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+          commit_username: ${{ secrets.AUR_COMMIT_USERNAME }}
+          commit_email: ${{ secrets.AUR_COMMIT_EMAIL }}
+          allow_empty_commits: false
+ 
